@@ -15,9 +15,11 @@ from __future__ import annotations
 import uuid
 
 import streamlit as st
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from hotmart_agent import Autonomy, Settings, build_graph
+from hotmart_agent.formatting import brl, num, pct, signed_pct, times
 
 # ------------------------------------------------------------------
 # Página
@@ -54,6 +56,18 @@ if "last_state" not in st.session_state:
 # Grafo (cacheado por combinação de configurações)
 # ------------------------------------------------------------------
 @st.cache_resource
+def get_checkpointer():
+    """Checkpointer único, fora do cache do grafo.
+
+    Se ele vivesse dentro de `get_graph`, mexer em qualquer controle da sidebar
+    criaria um armazenamento novo e vazio — e uma aprovação pendente sumiria em
+    silêncio, sem erro e sem efeito. Mantendo-o à parte, a thread sobrevive a
+    mudanças de autonomia, janela ou modo live.
+    """
+    return InMemorySaver()
+
+
+@st.cache_resource
 def get_graph(autonomy: str, live: bool, window: int):
     settings = Settings.from_env()
     settings = settings.with_(
@@ -61,7 +75,22 @@ def get_graph(autonomy: str, live: bool, window: int):
         dry_run=not live,
         analysis_window_days=window,
     )
-    return build_graph(settings), settings
+    return build_graph(settings, checkpointer=get_checkpointer()), settings
+
+
+def _fmt_valor(valor, unidade: str) -> str:
+    """Formata o KPI no padrão brasileiro, reusando os helpers do agente."""
+    if valor is None:
+        return "—"
+    if unidade == "BRL":
+        return brl(valor)
+    if unidade == "%":
+        return pct(valor, 2)
+    if unidade == "x":
+        return times(valor)
+    if unidade == "un":
+        return num(valor, 0)
+    return num(valor)
 
 
 def executar(graph, payload):
@@ -193,14 +222,21 @@ if state:
         st.markdown(report)
         st.download_button("⬇️ Baixar relatório", report, file_name="relatorio.md")
 
-    metrics = state.get("metrics") or {}
+    # O agente devolve `metrics` como lista de dicts (label/value/unit/delta_pct),
+    # não como mapa chave->número.
+    metrics = state.get("metrics") or []
     if metrics:
         st.subheader("Métricas")
-        nums = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
-        if nums:
-            cols = st.columns(min(4, len(nums)))
-            for i, (k, v) in enumerate(list(nums.items())[:8]):
-                cols[i % len(cols)].metric(k.replace("_", " "), f"{v:,.2f}" if isinstance(v, float) else v)
+        cols = st.columns(4)
+        for i, m in enumerate(metrics):
+            delta = m.get("delta_pct")
+            cols[i % 4].metric(
+                m.get("label") or m.get("key", ""),
+                _fmt_valor(m.get("value"), m.get("unit", "")),
+                signed_pct(delta, 1) if delta is not None else None,
+                # Reembolso e CPA subindo é má notícia: inverte a cor do delta.
+                delta_color="inverse" if m.get("good_when") == "down" else "normal",
+            )
         with st.expander("Métricas completas"):
             st.json(metrics)
 
