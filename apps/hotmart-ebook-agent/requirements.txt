@@ -1,0 +1,15 @@
+# Dependências para deploy no Streamlit Community Cloud.
+#
+# O pacote `hotmart_agent` não entra aqui: o Streamlit insere o diretório do
+# script principal no sys.path (web/bootstrap.py), então apontar o app para
+# apps/hotmart-ebook-agent/ui.py já torna o pacote importável a partir do repo.
+#
+# Para desenvolvimento local use `uv sync --all-extras` (pyproject.toml).
+
+langgraph>=1.0.0,<2
+streamlit>=1.60.0
+
+# Opcional: só necessário se você quiser que o modelo desambigue comandos
+# confusos e revise a redação. Sem isso o agente usa o caminho determinístico.
+# langchain>=1.0.0
+# langchain-anthropic>=1.0.0

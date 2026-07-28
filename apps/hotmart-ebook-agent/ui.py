@@ -12,6 +12,7 @@ botões de aprovar/rejeitar aparecem aqui.
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import streamlit as st
@@ -40,6 +41,30 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ------------------------------------------------------------------
+# Modo vitrine — para instâncias expostas na internet
+# ------------------------------------------------------------------
+def _modo_vitrine() -> bool:
+    """Trava a instância em dry-run quando ela está publicamente acessível.
+
+    Vale lembrar por que uma flag só resolve: `build_*_client` devolve o cliente
+    simulado sempre que `dry_run` está ligado, mesmo com credencial presente.
+    Então travar o dry-run já garante dados sintéticos e zero chamada externa —
+    não há caminho pelo qual um visitante gaste verba, escreva para um cliente
+    ou veja número real de faturamento.
+    """
+    valor = os.getenv("HOTMART_AGENT_PUBLIC", "")
+    if not valor:
+        try:
+            valor = str(st.secrets.get("public_demo", ""))
+        except Exception:
+            # Sem arquivo de secrets (execução local): não é vitrine.
+            valor = ""
+    return valor.strip().lower() in {"1", "true", "yes", "sim", "on"}
+
+
+MODO_VITRINE = _modo_vitrine()
 
 # ------------------------------------------------------------------
 # Estado da sessão
@@ -118,17 +143,28 @@ with st.sidebar:
         value="L2",
         help="L0 observa · L1 recomenda · L2 pede aprovação · L3 autônomo",
     )
-    live = st.toggle(
-        "Modo live (chamadas reais)",
-        value=False,
-        help="Desligado = dry-run: o agente mostra o que faria, sem tocar em nada.",
-    )
+    if MODO_VITRINE:
+        live = False
+        st.info(
+            "**Modo vitrine.** Esta instância é pública e fica travada em "
+            "dry-run: os dados são simulados e o agente não envia e-mail, não "
+            "cria campanha e não movimenta dinheiro.",
+            icon="🛡️",
+        )
+    else:
+        live = st.toggle(
+            "Modo live (chamadas reais)",
+            value=False,
+            help="Desligado = dry-run: o agente mostra o que faria, sem tocar em nada.",
+        )
     window = st.slider("Janela de análise (dias)", 3, 30, 7)
 
     if live and autonomy == "L3":
-        st.warning("L3 + live: o agente executa sozinho dentro dos guardrails. "
-                   "Recomendado só depois de semanas de L2 sem rejeições.")
-    if not live:
+        st.warning(
+            "L3 + live: o agente executa sozinho dentro dos guardrails. "
+            "Recomendado só depois de semanas de L2 sem rejeições."
+        )
+    if not live and not MODO_VITRINE:
         st.info("Dry-run ativo — nenhuma chamada externa será feita.", icon="🛡️")
 
     st.divider()
