@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hotmart-ebook-agent"
+version = "0.1.0"
+description = "Agente de IA para operar um ebook na Hotmart: análise, suporte e mídia paga"
+requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
+dependencies = [
+    "langgraph>=1.0.0,<2",
+]
+
+[project.optional-dependencies]
+llm = ["langchain>=1.0.0", "langchain-anthropic>=1.0.0"]
+
+[project.scripts]
+hotmart-agent = "hotmart_agent.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.9.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["hotmart_agent"]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py310"
+lint.select = ["E", "F", "I", "UP"]
+lint.ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
